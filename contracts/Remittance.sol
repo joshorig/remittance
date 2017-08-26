@@ -4,6 +4,11 @@ import "./Terminable.sol";
 
 contract Remittance is Terminable {
 
+  modifier noEther() {
+      assert(msg.value == 0);
+      _;
+  }
+
   struct RemittanceRequestStruct {
     bool isValue;
     uint amount;
@@ -42,6 +47,7 @@ contract Remittance is Terminable {
 
   function withdraw(bytes32 _hash1, bytes32 _hash2)
   public
+  noEther
   {
     bytes32 _publicKey = sha3(_hash1,_hash2);
     RemittanceRequestStruct storage remittanceRequestStruct = remittanceRequests[_publicKey];
@@ -56,6 +62,7 @@ contract Remittance is Terminable {
 
   function refund(bytes32 _publicKey)
   public
+  noEther
   {
     RemittanceRequestStruct storage remittanceRequestStruct = remittanceRequests[_publicKey];
     require(remittanceRequestStruct.sender == msg.sender);
