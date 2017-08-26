@@ -5,96 +5,74 @@ import "./Terminable.sol";
 contract Remittance is Terminable {
 
   struct RemittanceRequestStruct {
-    bool is_value;
+    bool isValue;
     uint amount;
     uint fee;
-    bytes32 public_key;
     uint deadline;
+    bytes32 publicKey;
+    address sender;
   }
 
-  struct RemittanceVenueStruct {
-    bool is_value;
-    bool is_active;
-    uint fee;
-  }
+  event LogRemittanceRequest(address indexed sender, uint amount, uint fee, uint deadline);
+  event LogWithdrawal(address indexed recipient, uint amount);
+  event LogRefund(address indexed sender, uint amount);
 
-  uint private counter;
+  mapping (bytes32 => RemittanceRequestStruct) remittanceRequests;
 
-  event LogRemittanceRequest(address indexed sender, address indexed exchange, uint amount, uint fee, uint deadline);
-  event LogWithdrawal(address indexed exchange, uint256 value);
-  event LogRefund(address indexed sender, uint256 value);
+  uint public requiredGas = 40712;
 
-  mapping (address => RemittanceVenueStruct) public remittanceVenues;
-  mapping (address => mapping (bytes32 => RemittanceRequestStruct)) remittanceRequests;
-  address[] exchange_venue_addresses;
-
-
-  uint public required_gas = 41580; //update for request method
-
-  function requestRemittance(address _exchange_venue, bytes32 _public_key, uint _duration)
+  function requestRemittance(bytes32 _publicKey, uint _duration)
   public
   payable
   {
-    uint fee = required_gas * tx.gasprice; //safe multiply
-    require(msg.value > fee && msg.sender.balance >= msg.value);
-    require(remittanceVenues[_exchange_venue].is_value && remittanceVenues[_exchange_venue].is_active); //exchange must exist and be active
+    uint fee = requiredGas * tx.gasprice; //safe multiply
+    require(msg.value > fee);
     uint amount = msg.value-fee;
     uint deadline = block.number+_duration;
-    remittanceRequests[_exchange_venue][_public_key].is_value = true;
-    remittanceRequests[_exchange_venue][_public_key].amount = amount;
-    remittanceRequests[_exchange_venue][_public_key].fee = fee;
-    remittanceRequests[_exchange_venue][_public_key].public_key = _public_key;
-    remittanceRequests[_exchange_venue][_public_key].deadline = deadline;
-    LogRemittanceRequest(msg.sender,_exchange_venue,amount,fee,deadline);
+    RemittanceRequestStruct storage remittanceRequestStruct = remittanceRequests[_publicKey];
+    require(!remittanceRequestStruct.isValue);
+    remittanceRequestStruct.isValue = true;
+    remittanceRequestStruct.amount = amount;
+    remittanceRequestStruct.fee = fee;
+    remittanceRequestStruct.publicKey = _publicKey;
+    remittanceRequestStruct.deadline = deadline;
+    remittanceRequestStruct.sender = msg.sender;
+    LogRemittanceRequest(msg.sender,amount,fee,deadline);
   }
 
-  function withdraw(bytes32 _public_key, bytes32 _hash1, bytes32 _hash2)
+  function withdraw(bytes32 _hash1, bytes32 _hash2)
   public
   {
-    require(remittanceVenues[msg.sender].is_value);
-    require(remittanceRequests[msg.sender][_public_key].is_value);
-    require(sha3(_hash1,_hash2) == remittanceRequests[msg.sender][_public_key].public_key);
-    uint withdrawal_amount = remittanceRequests[msg.sender][_public_key].amount;
-    remittanceRequests[msg.sender][_public_key].is_value = false;
+    bytes32 _publicKey = sha3(_hash1,_hash2);
+    RemittanceRequestStruct storage remittanceRequestStruct = remittanceRequests[_publicKey];
+    require(remittanceRequestStruct.sender != msg.sender); //This is bad since the sender has revealed the secrets...
+    require(remittanceRequestStruct.amount>0);
+    require(remittanceRequestStruct.deadline >= block.number);
+    uint withdrawal_amount = remittanceRequestStruct.amount;
+    remittanceRequestStruct.amount = 0;
     LogWithdrawal(msg.sender,withdrawal_amount);
     msg.sender.transfer(withdrawal_amount);
   }
 
-  function refund(bytes32 _public_key, address _exchange_venue)
+  function refund(bytes32 _publicKey)
   public
   {
-    require(remittanceVenues[_exchange_venue].is_value);
-    require(remittanceRequests[_exchange_venue][_public_key].is_value);
-    require(remittanceRequests[_exchange_venue][_public_key].deadline<block.number);
-    remittanceRequests[_exchange_venue][_public_key].is_value = false;
-    uint refund_amount = safeAdd(remittanceRequests[_exchange_venue][_public_key].amount,remittanceRequests[_exchange_venue][_public_key].fee);
+    RemittanceRequestStruct storage remittanceRequestStruct = remittanceRequests[_publicKey];
+    require(remittanceRequestStruct.sender == msg.sender);
+    require(remittanceRequestStruct.deadline<block.number);
+    require(remittanceRequestStruct.amount>0);
+    uint refund_amount = safeAdd(remittanceRequestStruct.amount,remittanceRequestStruct.fee);
+    remittanceRequestStruct.amount = 0;
     LogRefund(msg.sender,refund_amount);
     msg.sender.transfer(refund_amount);
   }
 
-  function registerRemittanceVenue(uint _fee)
-  public
-  {
-    require(!remittanceVenues[msg.sender].is_value);
-    remittanceVenues[msg.sender].is_value = true;
-    remittanceVenues[msg.sender].is_active = true;
-    remittanceVenues[msg.sender].fee = _fee;
-  }
-
-  function disableRemittanceVenue()
-  public
-  {
-    require(remittanceVenues[msg.sender].is_value && remittanceVenues[msg.sender].is_active);
-    remittanceVenues[msg.sender].is_active = false;
-  }
-
-  function updateRemittanceFee(uint _fee) public {
-    require(remittanceVenues[msg.sender].is_value);
-    remittanceVenues[msg.sender].fee = _fee;
-  }
-
   function safeAdd(uint a, uint b) internal constant returns (uint c) {
     assert((c = a + b) >= a);
+  }
+
+  function() {
+    assert(false);
   }
 
 }
