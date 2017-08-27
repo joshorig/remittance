@@ -41,7 +41,7 @@ contract('Remittance', function(accounts) {
     Remittance.deployed()
     .then((instance) => {
       remittance = instance;
-      remittance.requestRemittance(publicKey, duration, {from: accounts[0],value: web3.toWei(amount_to_send,"ether")})
+      remittance.requestRemittance(publicKey, accounts[1], duration, {from: accounts[0],value: web3.toWei(amount_to_send,"ether")})
       .then((txObject) => {
         assert.equal(txObject.logs.length,1,"Did not log 1 event");
         var logEvent = txObject.logs[0];
@@ -59,7 +59,7 @@ contract('Remittance', function(accounts) {
     Remittance.deployed()
     .then((instance) => {
       remittance = instance;
-      remittance.requestRemittance(publicKey, duration, {from: accounts[0],value: web3.toWei(amount_to_send,"ether")})
+      remittance.requestRemittance(publicKey, accounts[1], duration, {from: accounts[0],value: web3.toWei(amount_to_send,"ether")})
       .then(() => {
         assert.fail("", "", "Did not throw invalid opcode VM exception");
       })
@@ -85,11 +85,11 @@ contract('Remittance', function(accounts) {
     });
   });
 
-  it("Should not allow withdrawal by sender", done => {
+  it("Should not allow withdrawal if not recipient", done => {
     Remittance.deployed()
     .then((instance) => {
       remittance = instance;
-      remittance.withdraw(passwordHash1,passwordHash2, {from: accounts[0]})
+      remittance.withdraw(passwordHash1,passwordHash2, {from: accounts[2]})
       .then(() => {
         assert.fail("", "", "Did not throw invalid opcode VM exception");
       })
