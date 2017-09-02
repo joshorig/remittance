@@ -10,7 +10,6 @@ contract Remittance is Terminable {
   }
 
   struct RemittanceRequestStruct {
-    bool isValue;
     uint amount;
     uint fee;
     uint deadline;
@@ -18,6 +17,8 @@ contract Remittance is Terminable {
     address sender;
     address recipient;
   }
+
+  uint public balance;
 
   event LogRemittanceRequest(address indexed sender, address indexed recipient, uint amount, uint fee, uint deadline);
   event LogWithdrawal(address indexed recipient, uint amount);
@@ -34,11 +35,12 @@ contract Remittance is Terminable {
     uint fee = requiredGas * tx.gasprice; //safe multiply
     require(msg.value > fee);
     require(_recipient != address(0x0));
+
+    RemittanceRequestStruct storage remittanceRequestStruct = remittanceRequests[_publicKey];
+    require(remittanceRequestStruct.deadline == 0); // we cannot use the same _publicKey previously used
+
     uint amount = msg.value-fee;
     uint deadline = block.number+_duration;
-    RemittanceRequestStruct storage remittanceRequestStruct = remittanceRequests[_publicKey];
-    require(!remittanceRequestStruct.isValue); // we cannot use the same _publicKey previously used
-    remittanceRequestStruct.isValue = true;
     remittanceRequestStruct.amount = amount;
     remittanceRequestStruct.fee = fee;
     remittanceRequestStruct.publicKey = _publicKey;
@@ -58,10 +60,11 @@ contract Remittance is Terminable {
     require(remittanceRequestStruct.recipient == msg.sender);
     require(remittanceRequestStruct.amount>0);
     require(remittanceRequestStruct.deadline >= block.number);
-    uint withdrawal_amount = remittanceRequestStruct.amount;
+    uint withdrawalAmount = remittanceRequestStruct.amount;
     remittanceRequestStruct.amount = 0;
-    LogWithdrawal(msg.sender,withdrawal_amount);
-    msg.sender.transfer(withdrawal_amount);
+    balance = safeAdd(balance,remittanceRequestStruct.fee);
+    LogWithdrawal(msg.sender,withdrawalAmount);
+    msg.sender.transfer(withdrawalAmount);
     return true;
   }
 
@@ -71,13 +74,12 @@ contract Remittance is Terminable {
   returns (bool success)
   {
     RemittanceRequestStruct storage remittanceRequestStruct = remittanceRequests[_publicKey];
-    require(remittanceRequestStruct.sender == msg.sender);
     require(remittanceRequestStruct.deadline<block.number);
     require(remittanceRequestStruct.amount>0);
     uint refund_amount = safeAdd(remittanceRequestStruct.amount,remittanceRequestStruct.fee);
     remittanceRequestStruct.amount = 0;
-    LogRefund(msg.sender,refund_amount);
-    msg.sender.transfer(refund_amount);
+    LogRefund(remittanceRequestStruct.sender,refund_amount);
+    remittanceRequestStruct.sender.transfer(refund_amount);
     return true;
   }
 

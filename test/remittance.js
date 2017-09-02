@@ -1,5 +1,7 @@
-var BigNumber = require('bignumber.js');
-var Remittance = artifacts.require("./Remittance.sol");
+require('babel-polyfill');
+const BigNumber = require('bignumber.js');
+const utils = require('./helpers/Utils');
+const Remittance = artifacts.require("./Remittance.sol");
 
 function solSha3 (...args) {
     args = args.map(arg => {
@@ -25,95 +27,83 @@ function solSha3 (...args) {
 
 contract('Remittance', function(accounts) {
 
-  var remittance;
-  var password1 = "password1";
-  var password2 = "password2";
-  var amount_to_send = 1;
-  var duration = 5; //5 blocks
-  var remittanceRequest1Amount;
 
-  var passwordHash1 = solSha3(password1);
-  var passwordHash2 = solSha3(password2);
-  var incorrectPasswordHash = solSha3("incorrect");
-  var publicKey = solSha3(passwordHash1,passwordHash2);
+  const password1 = "password1";
+  const password2 = "password2";
+  const amount_to_send = 1;
+  const duration = 5; //5 blocks
 
-  it("Should create remittance request correctly", done => {
-    Remittance.deployed()
-    .then((instance) => {
-      remittance = instance;
-      remittance.requestRemittance(publicKey, accounts[1], duration, {from: accounts[0],value: web3.toWei(amount_to_send,"ether")})
-      .then((txObject) => {
-        assert.equal(txObject.logs.length,1,"Did not log 1 event");
-        var logEvent = txObject.logs[0];
-        remittanceRequest1Amount = logEvent.args.amount;
-        assert.equal(logEvent.event,"LogRemittanceRequest","Did not LogRemittanceRequest");
-        assert.equal(logEvent.args.sender,accounts[0],"Did not LogRemittanceRequest sender correctly");
-        assert.equal((remittanceRequest1Amount.plus(logEvent.args.fee)).valueOf(),web3.toWei(amount_to_send,"ether"),"Did not LogRemittanceRequest amount and fee correctly");
-        assert.equal(logEvent.args.deadline.valueOf(),txObject.receipt.blockNumber+duration,"Did not LogRemittanceRequest deadline correctly");
-        done();
-      });
-    });
+  const passwordHash1 = solSha3(password1);
+  const passwordHash2 = solSha3(password2);
+  const incorrectPasswordHash = solSha3("incorrect");
+  const publicKey = solSha3(passwordHash1,passwordHash2);
+
+  let remittanceRequest1Amount;
+  let remittance;
+  let requiredGas;
+
+  beforeEach(async () => {
+    remittance = await Remittance.deployed();
+    requiredGas = await remittance.requiredGas.call();
   });
 
-  it("Should not create remittance request with previoulsy used publicKey", done => {
-    Remittance.deployed()
-    .then((instance) => {
-      remittance = instance;
-      remittance.requestRemittance(publicKey, accounts[1], duration, {from: accounts[0],value: web3.toWei(amount_to_send,"ether")})
-      .then(() => {
-        assert.fail("", "", "Did not throw invalid opcode VM exception");
-      })
-      .catch((e) => {
-        assert.include(e+"","invalid opcode","Did not throw invalid opcode VM exception");
-        done();
-      });
-    });
+  it("Should create remittance request correctly", async () => {
+
+    let txObject = await remittance.requestRemittance(publicKey, accounts[1], duration, {from: accounts[0],value: web3.toWei(amount_to_send,"ether")})
+    let expectedFee = requiredGas.times(web3.eth.getTransaction(txObject.tx).gasPrice);
+    remittanceRequest1Amount = new BigNumber(web3.toWei(amount_to_send,"ether")).minus(expectedFee);
+    let expectedDeadline = new BigNumber(txObject.receipt.blockNumber).plus(new BigNumber(duration));
+
+    assert.equal(txObject.logs.length,1,"Did not log LogRemittanceRequest event");
+    let logEvent = txObject.logs[0];
+    assert.equal(logEvent.event,"LogRemittanceRequest","Did not LogRemittanceRequest");
+    assert.equal(logEvent.args.sender,accounts[0],"Did not log sender correctly");
+    assert.equal(logEvent.args.recipient,accounts[1],"Did not log recipient correctly");
+    assert.equal(logEvent.args.fee.valueOf(),expectedFee.valueOf(),"Did not log fee correctly");
+    assert.equal(logEvent.args.amount.valueOf(),remittanceRequest1Amount.valueOf(),"Did not log amount correctly");
+    assert.equal(logEvent.args.deadline.valueOf(),expectedDeadline.valueOf(),"Did not log deadline correctly");
   });
 
-  it("Should not allow withdrawal with incorrect passwords", done => {
-    Remittance.deployed()
-    .then((instance) => {
-      remittance = instance;
-      remittance.withdraw(incorrectPasswordHash,passwordHash2, {from: accounts[1]})
-      .then(() => {
-        assert.fail("", "", "Did not throw invalid opcode VM exception");
-      })
-      .catch((e) => {
-        assert.include(e+"","invalid opcode","Did not throw invalid opcode VM exception");
-        done();
-      });
-    });
+  it("Should not create remittance request with previoulsy used publicKey", async () => {
+    try {
+     let txObject = await remittance.requestRemittance(publicKey, accounts[1], duration, {from: accounts[0],value: web3.toWei(amount_to_send,"ether"), gas: utils.exceptionGatToUse});
+     assert.equal(txObject.receipt.gasUsed, utils.exceptionGatToUse, "should have used all the gas");
+    }
+    catch (error){
+      return utils.ensureException(error);
+    }
   });
 
-  it("Should not allow withdrawal if not recipient", done => {
-    Remittance.deployed()
-    .then((instance) => {
-      remittance = instance;
-      remittance.withdraw(passwordHash1,passwordHash2, {from: accounts[2]})
-      .then(() => {
-        assert.fail("", "", "Did not throw invalid opcode VM exception");
-      })
-      .catch((e) => {
-        assert.include(e+"","invalid opcode","Did not throw invalid opcode VM exception");
-        done();
-      });
-    });
+  it("Should not allow withdrawal with incorrect passwords", async () => {
+    try {
+     let txObject = await remittance.withdraw(incorrectPasswordHash,passwordHash2, {from: accounts[1], gas: utils.exceptionGatToUse});
+     assert.equal(txObject.receipt.gasUsed, utils.exceptionGatToUse, "should have used all the gas");
+    }
+    catch (error){
+      return utils.ensureException(error);
+    }
   });
 
-  it("Should allow withdrawal with correct passwords", done => {
-    Remittance.deployed()
-    .then((instance) => {
-      remittance = instance;
-      remittance.withdraw(passwordHash1,passwordHash2, {from: accounts[1]})
-      .then((txObject) => {
-        assert.equal(txObject.logs.length,1,"Did not log 1 event");
-        var logEvent = txObject.logs[0];
-        assert.equal(logEvent.event,"LogWithdrawal","Did not LogWithdrawal");
-        assert.equal(logEvent.args.recipient,accounts[1],"Did not log recipient correctly");
-        assert.equal(logEvent.args.amount.valueOf(),remittanceRequest1Amount.valueOf(),"Did not log amount correctly");
-        done();
-      });
-    });
+  it("Should not allow withdrawal if not recipient", async () => {
+    try {
+     let txObject = await remittance.withdraw(passwordHash1,passwordHash2, {from: accounts[2], gas: utils.exceptionGatToUse});
+     assert.equal(txObject.receipt.gasUsed, utils.exceptionGatToUse, "should have used all the gas");
+    }
+    catch (error){
+      return utils.ensureException(error);
+    }
+  });
+
+
+  it("Should allow withdrawal with correct passwords", async () => {
+
+      let txObject = await remittance.withdraw(passwordHash1,passwordHash2, {from: accounts[1]});
+      assert.equal(txObject.logs.length,1,"Did not log 1 event");
+      let logEvent = txObject.logs[0];
+      assert.equal(logEvent.event,"LogWithdrawal","Did not LogWithdrawal");
+      assert.equal(logEvent.args.recipient,accounts[1],"Did not log recipient correctly");
+      assert.equal(logEvent.args.amount.valueOf(),remittanceRequest1Amount.valueOf(),"Did not log amount correctly");
+
   });
 
 });
