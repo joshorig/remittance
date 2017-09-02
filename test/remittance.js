@@ -66,8 +66,8 @@ contract('Remittance', function(accounts) {
 
   it("Should not create remittance request with previoulsy used publicKey", async () => {
     try {
-     let txObject = await remittance.requestRemittance(publicKey, accounts[1], duration, {from: accounts[0],value: web3.toWei(amount_to_send,"ether"), gas: utils.exceptionGatToUse});
-     assert.equal(txObject.receipt.gasUsed, utils.exceptionGatToUse, "should have used all the gas");
+     let txObject = await remittance.requestRemittance(publicKey, accounts[1], duration, {from: accounts[0],value: web3.toWei(amount_to_send,"ether"), gas: utils.exceptionGasToUse});
+     assert.equal(txObject.receipt.gasUsed, utils.exceptionGasToUse, "should have used all the gas");
     }
     catch (error){
       return utils.ensureException(error);
@@ -76,8 +76,8 @@ contract('Remittance', function(accounts) {
 
   it("Should not allow withdrawal with incorrect passwords", async () => {
     try {
-     let txObject = await remittance.withdraw(incorrectPasswordHash,passwordHash2, {from: accounts[1], gas: utils.exceptionGatToUse});
-     assert.equal(txObject.receipt.gasUsed, utils.exceptionGatToUse, "should have used all the gas");
+     let txObject = await remittance.withdraw(incorrectPasswordHash,passwordHash2, {from: accounts[1], gas: utils.exceptionGasToUse});
+     assert.equal(txObject.receipt.gasUsed, utils.exceptionGasToUse, "should have used all the gas");
     }
     catch (error){
       return utils.ensureException(error);
@@ -86,8 +86,8 @@ contract('Remittance', function(accounts) {
 
   it("Should not allow withdrawal if not recipient", async () => {
     try {
-     let txObject = await remittance.withdraw(passwordHash1,passwordHash2, {from: accounts[2], gas: utils.exceptionGatToUse});
-     assert.equal(txObject.receipt.gasUsed, utils.exceptionGatToUse, "should have used all the gas");
+     let txObject = await remittance.withdraw(passwordHash1,passwordHash2, {from: accounts[2], gas: utils.exceptionGasToUse});
+     assert.equal(txObject.receipt.gasUsed, utils.exceptionGasToUse, "should have used all the gas");
     }
     catch (error){
       return utils.ensureException(error);
